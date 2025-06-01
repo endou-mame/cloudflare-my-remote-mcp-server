@@ -11,5 +11,10 @@
 	"devDependencies": {
 		"typescript": "^5.5.2",
 		"wrangler": "^4.18.0"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.12.1",
+		"agents": "^0.0.94",
+		"zod": "^3.25.46"
 	}
 }
