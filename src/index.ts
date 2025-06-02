@@ -13,11 +13,9 @@ import { z } from "zod";
 // MCP Server Durable Object
 export class MCPServerObject extends DurableObject<Env> {
   private server: Server;
-  private sessions: Set<WebSocket>;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.sessions = new Set();
     this.server = this.createMCPServer();
   }
 
@@ -307,68 +305,14 @@ export class MCPServerObject extends DurableObject<Env> {
     return server;
   }
 
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
-    try {
-      if (typeof message !== "string") {
-        throw new Error("Expected string message");
-      }
-
-      const jsonrpcMessage = JSON.parse(message);
-      const response = await this.server.handleRequest(jsonrpcMessage);
-      
-      if (response) {
-        ws.send(JSON.stringify(response));
-      }
-    } catch (error) {
-      console.error("Error handling WebSocket message:", error);
-      
-      // Send error response if we can parse the request ID
-      try {
-        const parsedMessage = JSON.parse(message as string);
-        const errorResponse = {
-          jsonrpc: "2.0",
-          id: parsedMessage.id || null,
-          error: {
-            code: -32603,
-            message: "Internal error",
-            data: (error as Error).message,
-          },
-        };
-        ws.send(JSON.stringify(errorResponse));
-      } catch {
-        // If we can't parse the message, just close the connection
-        ws.close(1011, "Internal error");
-      }
-    }
-  }
-
-  async webSocketClose(ws: WebSocket, code: number, reason: string) {
-    this.sessions.delete(ws);
-    console.log(`WebSocket closed: ${code} ${reason}`);
-  }
-
-  async webSocketError(ws: WebSocket, error: unknown) {
-    this.sessions.delete(ws);
-    console.error("WebSocket error:", error);
-  }
-
-  async acceptWebSocket(ws: WebSocket) {
-    this.sessions.add(ws);
-    ws.accept();
-    
-    // Send initialization message
-    const initMessage = {
-      jsonrpc: "2.0",
-      method: "notifications/initialized",
-      params: {},
-    };
-    ws.send(JSON.stringify(initMessage));
+  async handleMCPRequest(jsonRpcMessage: any): Promise<any> {
+    return await this.server.handleRequest(jsonRpcMessage);
   }
 }
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
-    // Handle CORS
+    // Handle CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 200,
@@ -382,59 +326,87 @@ export default {
 
     const url = new URL(request.url);
 
-    // Handle WebSocket upgrade for MCP connections
-    if (request.headers.get("Upgrade") === "websocket") {
-      const webSocketPair = new WebSocketPair();
-      const [client, server] = Object.values(webSocketPair);
-
-      // Get or create Durable Object instance
+    // Handle MCP HTTP Streamable endpoint
+    if (request.method === "POST" && url.pathname === "/mcp") {
       const id = env.MY_DURABLE_OBJECT.idFromName("mcp-server");
       const stub = env.MY_DURABLE_OBJECT.get(id);
-      
-      // Accept the WebSocket connection in the Durable Object
-      await stub.acceptWebSocket(server);
 
-      return new Response(null, {
-        status: 101,
-        webSocket: client,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
+      try {
+        const jsonRpcMessage = await request.json();
+        const response = await stub.handleMCPRequest(jsonRpcMessage);
+
+        // Create SSE response stream
+        const { readable, writable } = new TransformStream();
+        const writer = writable.getWriter();
+
+        // Send response as SSE data
+        if (response) {
+          const sseData = `data: ${JSON.stringify(response)}\n\n`;
+          await writer.write(new TextEncoder().encode(sseData));
+        }
+
+        await writer.close();
+
+        return new Response(readable, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          },
+        });
+      } catch (error) {
+        console.error("Error handling MCP request:", error);
+        
+        return new Response(JSON.stringify({
+          jsonrpc: "2.0",
+          id: null,
+          error: {
+            code: -32603,
+            message: "Internal error",
+            data: (error as Error).message,
+          },
+        }), {
+          status: 500,
+          headers: { 
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
     }
 
-    // Handle HTTP requests - provide information about the MCP server
+    // Handle root endpoint - provide server information
     if (url.pathname === "/") {
       const serverInfo = {
         name: "Cloudflare MCP Server",
         version: "1.0.0",
         description: "A Model Context Protocol server running on Cloudflare Workers",
-        protocols: ["websocket"],
+        protocols: ["http-streamable"],
         capabilities: {
           tools: true,
           resources: true,
           prompts: true,
         },
         endpoints: {
-          websocket: `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}/ws`,
+          mcp: `${url.protocol}//${url.host}/mcp`,
         },
-        documentation: "Connect via WebSocket to use MCP protocol",
+        documentation: "Send POST requests with JSON-RPC messages to /mcp endpoint",
+        usage: {
+          method: "POST",
+          url: "/mcp",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: "JSON-RPC 2.0 message",
+          response: "Server-Sent Events (text/event-stream)",
+        },
       };
 
       return new Response(JSON.stringify(serverInfo, null, 2), {
         headers: {
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
-    }
-
-    // Handle WebSocket endpoint info
-    if (url.pathname === "/ws") {
-      return new Response("WebSocket endpoint - upgrade connection to use MCP protocol", {
-        status: 426,
-        headers: {
-          "Upgrade": "websocket",
           "Access-Control-Allow-Origin": "*",
         },
       });
