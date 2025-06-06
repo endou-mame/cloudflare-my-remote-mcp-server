@@ -78,6 +78,22 @@ export class MCPServerObject extends DurableObject<Env> {
               required: ["min", "max"],
             },
           },
+          {
+            name: "roll_dice",
+            description: "Roll dice and get results (6-sided dice)",
+            inputSchema: {
+              type: "object",
+              properties: {
+                count: {
+                  type: "number",
+                  description: "Number of dice to roll",
+                  minimum: 1,
+                  maximum: 100,
+                },
+              },
+              required: ["count"],
+            },
+          },
         ],
       };
     });
@@ -119,6 +135,33 @@ export class MCPServerObject extends DurableObject<Env> {
               {
                 type: "text",
                 text: `Random number between ${randomArgs.min} and ${randomArgs.max}: ${randomNum}`,
+              },
+            ],
+          };
+
+        case "roll_dice":
+          const diceArgs = z
+            .object({ 
+              count: z.number().min(1).max(100)
+            })
+            .parse(args);
+          
+          const rolls: number[] = [];
+          for (let i = 0; i < diceArgs.count; i++) {
+            const roll = Math.floor(Math.random() * 6) + 1;
+            rolls.push(roll);
+          }
+          
+          const total = rolls.reduce((sum, roll) => sum + roll, 0);
+          const rollsText = rolls.length === 1 ? 
+            `${rolls[0]}` : 
+            `${rolls.join(', ')} (total: ${total})`;
+          
+          return {
+            content: [
+              {
+                type: "text",
+                text: `🎲 Rolling ${diceArgs.count}d6: ${rollsText}`,
               },
             ],
           };
