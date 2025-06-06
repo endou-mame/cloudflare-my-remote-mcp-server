@@ -80,7 +80,7 @@ export class MCPServerObject extends DurableObject<Env> {
           },
           {
             name: "roll_dice",
-            description: "Roll dice and get results (e.g., 2d6 for two six-sided dice)",
+            description: "Roll dice and get results (6-sided dice)",
             inputSchema: {
               type: "object",
               properties: {
@@ -90,14 +90,8 @@ export class MCPServerObject extends DurableObject<Env> {
                   minimum: 1,
                   maximum: 100,
                 },
-                sides: {
-                  type: "number",
-                  description: "Number of sides on each die (e.g., 6 for d6, 20 for d20)",
-                  minimum: 2,
-                  maximum: 1000,
-                },
               },
-              required: ["count", "sides"],
+              required: ["count"],
             },
           },
         ],
@@ -148,14 +142,13 @@ export class MCPServerObject extends DurableObject<Env> {
         case "roll_dice":
           const diceArgs = z
             .object({ 
-              count: z.number().min(1).max(100), 
-              sides: z.number().min(2).max(1000) 
+              count: z.number().min(1).max(100)
             })
             .parse(args);
           
           const rolls: number[] = [];
           for (let i = 0; i < diceArgs.count; i++) {
-            const roll = Math.floor(Math.random() * diceArgs.sides) + 1;
+            const roll = Math.floor(Math.random() * 6) + 1;
             rolls.push(roll);
           }
           
@@ -168,7 +161,7 @@ export class MCPServerObject extends DurableObject<Env> {
             content: [
               {
                 type: "text",
-                text: `🎲 Rolling ${diceArgs.count}d${diceArgs.sides}: ${rollsText}`,
+                text: `🎲 Rolling ${diceArgs.count}d6: ${rollsText}`,
               },
             ],
           };

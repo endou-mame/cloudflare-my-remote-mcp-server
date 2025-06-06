@@ -36,7 +36,7 @@ A Model Context Protocol (MCP) server implementation running on Cloudflare Worke
 - **echo**: Echo back input text
 - **get_time**: Get current timestamp
 - **random_number**: Generate random number between min and max
-- **roll_dice**: Roll dice and get results (supports multiple dice and different sided dice)
+- **roll_dice**: Roll 6-sided dice and get results (supports multiple dice)
 
 ### Resources  
 - **cloudflare://worker-info**: Information about the Cloudflare Worker
@@ -137,13 +137,12 @@ curl -X POST http://localhost:8787/mcp \
     "params": {
       "name": "roll_dice",
       "arguments": {
-        "count": 1,
-        "sides": 6
+        "count": 1
       }
     }
   }'
 
-# Roll two 20-sided dice
+# Roll two 6-sided dice
 curl -X POST http://localhost:8787/mcp \
   -H "Content-Type: application/json" \
   -d '{
@@ -153,8 +152,7 @@ curl -X POST http://localhost:8787/mcp \
     "params": {
       "name": "roll_dice",
       "arguments": {
-        "count": 2,
-        "sides": 20
+        "count": 2
       }
     }
   }'
