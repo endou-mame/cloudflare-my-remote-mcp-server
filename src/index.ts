@@ -78,6 +78,28 @@ export class MCPServerObject extends DurableObject<Env> {
               required: ["min", "max"],
             },
           },
+          {
+            name: "roll_dice",
+            description: "Roll dice and get results (e.g., 2d6 for two six-sided dice)",
+            inputSchema: {
+              type: "object",
+              properties: {
+                count: {
+                  type: "number",
+                  description: "Number of dice to roll",
+                  minimum: 1,
+                  maximum: 100,
+                },
+                sides: {
+                  type: "number",
+                  description: "Number of sides on each die (e.g., 6 for d6, 20 for d20)",
+                  minimum: 2,
+                  maximum: 1000,
+                },
+              },
+              required: ["count", "sides"],
+            },
+          },
         ],
       };
     });
@@ -119,6 +141,34 @@ export class MCPServerObject extends DurableObject<Env> {
               {
                 type: "text",
                 text: `Random number between ${randomArgs.min} and ${randomArgs.max}: ${randomNum}`,
+              },
+            ],
+          };
+
+        case "roll_dice":
+          const diceArgs = z
+            .object({ 
+              count: z.number().min(1).max(100), 
+              sides: z.number().min(2).max(1000) 
+            })
+            .parse(args);
+          
+          const rolls: number[] = [];
+          for (let i = 0; i < diceArgs.count; i++) {
+            const roll = Math.floor(Math.random() * diceArgs.sides) + 1;
+            rolls.push(roll);
+          }
+          
+          const total = rolls.reduce((sum, roll) => sum + roll, 0);
+          const rollsText = rolls.length === 1 ? 
+            `${rolls[0]}` : 
+            `${rolls.join(', ')} (total: ${total})`;
+          
+          return {
+            content: [
+              {
+                type: "text",
+                text: `🎲 Rolling ${diceArgs.count}d${diceArgs.sides}: ${rollsText}`,
               },
             ],
           };
